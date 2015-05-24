@@ -14,7 +14,7 @@ Feature List:
 Sniff packets in a local network.
 Filter sniffed packets by specific protocol.
 Extract specific attributes from a filtered protocol.
-Calculate maximum diameter, average diameter, and average packet size
+Calculate maximum diameter, maximum packet length, average diameter, and average packet size
 
 Protocol Support:
 Linux:
@@ -1133,7 +1133,14 @@ def findMaxDiameter():
     diameterMax = max(diameterList)
     
     # Print the maximum diameter.
-    print('Max Diameter: ' + str(diameterMax))
+    print('Max Diameter: ' + str(diameterMax) + ' hops')
+    
+def findMaxPacketLength():
+	# Find the maximum packet length of all the packets.
+	lengthMax = max(lengthList)
+
+	# Print the maximum packet length.
+	print('Max Packet Length: ' + str(lengthMax) + ' bytes')
 
 def findAverageDiameter():
 	# Hold the sum and the count of the diameters.
@@ -1147,9 +1154,9 @@ def findAverageDiameter():
         
     # Divide diameterSum by count to give average.
     diameterAverage = diameterSum / count
-    print('Average Diameter: ' + str(diameterAverage))
+    print('Average Diameter: ' + str(diameterAverage) + ' hops')
 
-def findAveragePacketSize():
+def findAveragePacketLength():
 	# Hold the sum and the count of the packet lengths.
     lengthSum = 0
     count = 0
@@ -1161,7 +1168,7 @@ def findAveragePacketSize():
         
     # Divide lengthSum by count to give average.
     lengthAverage = lengthSum / count
-    print('Average Packet Size: ' + str(lengthAverage) + ' bytes')
+    print('Average Packet Length: ' + str(lengthAverage) + ' bytes')
 
 def startSniff():
 	try:
@@ -1341,8 +1348,9 @@ def calculate():
 	if startCalculations() == 0:
 		try:
 			findMaxDiameter()
+			findMaxPacketLength()
 			findAverageDiameter()
-			findAveragePacketSize()
+			findAveragePacketLength()
 		except KeyboardInterrupt:
 			print('\nCalculations stopped.')
 	
