@@ -13,7 +13,7 @@ Feature List:
 Sniff packets in a local network.
 Filter sniffed packets by specific protocol.
 Extract specific attributes from a filtered protocol.
-Calculate maximum diameter, average diameter, and average packet size
+Calculate maximum diameter, maximum packet length, average diameter, and average packet size
 
 Protocol Support:
 Linux:
