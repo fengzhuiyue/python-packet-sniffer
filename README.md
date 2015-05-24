@@ -1,4 +1,3 @@
-'''
 JL Software
 
 Description:
@@ -30,4 +29,3 @@ Windows:
 	ICMP
 	TCP
 	UDP
-'''
