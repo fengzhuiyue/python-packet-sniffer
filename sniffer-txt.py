@@ -2,7 +2,7 @@
 JL Software
 
 Description:
-An application that can sniff packets in a local network and displays
+An application that can sniff packets in a local network and display
 	protocol information.
 
 Requirements:
@@ -12,9 +12,9 @@ Python 2.7
 
 Feature List:
 Sniff packets in a local network.
-Filter sniffed packets by specific protocol.
-Extract specific attributes from a filtered protocol.
-Calculate maximum diameter, maximum packet length, average diameter, and average packet size
+Filter packets by specific protocol in real time.
+Extract specific attributes from a filtered protocol in real time.
+Calculate maximum diameter, maximum packet length, average diameter, and average packet size.
 
 Protocol Support:
 Linux:
@@ -32,38 +32,29 @@ Windows:
 	UDP
 '''
 
-import socket, sys, time, platform
-from struct import *
+import socket, sys, time, platform, struct
 
-# Global constants for each header length.
-constEthHeaderLength = 14
-constARPHeaderLength = 28
-constIPHeaderLength = 20
-constTCPHeaderLength = 20
-constUDPHeaderLength = 8
-constICMPHeaderLength = 8
-
-# Lists of unpacked packets.
-allList = []
-arpList = []
-icmpList = []
-tcpList = []
-udpList = []
-
-# Special lists used for calculations and graphs.
+# Special lists used for calculations.
 lengthList = []
 diameterList = []
+
+# Special lists used to hold unpacked info and calculation results.
+unpackedInfo = []
+calculationList = []
 
 # Check the OS the application is running on.
 os = platform.system()
 linux = 'Linux'
 windows = 'Windows'
 
-def eth(packet, attKey, printKey):
+def eth(packet, extractedAttIndex, printKey):
+	# Header lengths.
+	ethHeaderLength = 14
+
 	# Get Ethernet header using begin and end.
 	# No need for windows calibration, Ethernet support under Linux only.
 	begin = 0
-	end = begin + constEthHeaderLength
+	end = begin + ethHeaderLength
 	ethHeader = packet[begin:end]
 
 	# Unpack the header because it originally in hex.
@@ -71,7 +62,7 @@ def eth(packet, attKey, printKey):
 	# ! signifies we are unpacking a network endian.
 	# 6s signifies we are unpacking a string of size 6 bytes.
 	# H signifies we are unpacking an integer of size 2 bytes.
-	ethHeaderUnpacked = unpack('!6s6sH', ethHeader)
+	ethHeaderUnpacked = struct.unpack('!6s6sH', ethHeader)
 		
 	# The first 6s is 6 bytes and contains the destination address.
 	ethDestAddress = ethHeaderUnpacked[0]
@@ -88,33 +79,38 @@ def eth(packet, attKey, printKey):
 	# Properly unpack and format the source address.
 	ethSourceAddress = '%.2x:%.2x:%.2x:%.2x:%.2x:%.2x' % (ord(ethSourceAddress[0]), ord(ethSourceAddress[1]), ord(ethSourceAddress[2]), ord(ethSourceAddress[3]), ord(ethSourceAddress[4]), ord(ethSourceAddress[5]))
 	
-	# If the printKey is 0, header information will be printed.
-	# 	If the attKey is *, all attributes will be printed.
-	# 	If the attKey is not *, the attribute the attKey corresponds to will be printed.
-	# If the printKey is not 0, then do not print out the header information.
-	# 	If the attKey is not *, the attribute the attKey corresponds to will be returned.
+	# Check if the print key is 0.
+	# If true, header information will be printed.
+	# 	Check if the user selected extracted attribute index is 0.
+	#	If true, all attributes will be printed.
+	#	If false, the attribute the user selected extracted attribute index corresponds to will be printed.
+	# If false, the attribute the user selected attribute index corresponds to will be returned.
 	if printKey == 0:
 		# Print Ethernet Header
-		print('\n********************\n** Ethernet (MAC) **\n********************')
+		unpackedInfo.append('\n********************\n** Ethernet (MAC) **\n********************')
 		
-		if (attKey == 0) or (attKey == '*'):
-				print('Destination Address: ' + str(ethDestAddress))
-		if (attKey == 1) or (attKey == '*'):
-				print('Source Address: ' + str(ethSourceAddress))
-		if (attKey == 2) or (attKey == '*'):
-				print('EtherType: ' + str(ethType))
+		if (extractedAttIndex == 1) or (extractedAttIndex == 0):
+				unpackedInfo.append('Destination Address: ' + str(ethDestAddress))
+		if (extractedAttIndex == 2) or (extractedAttIndex == 0):
+				unpackedInfo.append('Source Address: ' + str(ethSourceAddress))
+		if (extractedAttIndex == 3) or (extractedAttIndex == 0):
+				unpackedInfo.append('EtherType: ' + str(ethType))
 	else:
-		if (attKey == 0):
+		if (extractedAttIndex == 1):
 			return str(ethDestAddress)
-		if (attKey == 1):
+		if (extractedAttIndex == 2):
 			return str(ethSourceAddress)
-		if (attKey == 2):
+		if (extractedAttIndex == 3):
 			return str(ethType)
 	
-def arp(packet, attKey, printKey):
+def arp(packet, extractedAttIndex, printKey):
+	# Header lengths.
+	ethHeaderLength = 14
+	arpHeaderLength = 28
+	
 	# Get ARP header using begin and end.
-	begin = constEthHeaderLength
-	end = begin + constARPHeaderLength
+	begin = ethHeaderLength
+	end = begin + arpHeaderLength
 	arpHeader = packet[begin:end]
 	
 	# Unpack the header because it originally in hex.
@@ -124,7 +120,7 @@ def arp(packet, attKey, printKey):
 	# B signifies we are unpacking an integer of size 1 byte.
 	# 6s signifies we are unpacking a string of size 6 bytes.
 	# 4s signifies we are unpacking a string of size 4 bytes.
-	arpHeaderUnpacked = unpack('!HHBBH6s4s6s4s', arpHeader)
+	arpHeaderUnpacked = struct.unpack('!HHBBH6s4s6s4s', arpHeader)
 	
 	# The first H is 2 bytes and contains the hardware type.
 	arpHardwareType = socket.ntohs(arpHeaderUnpacked[0])
@@ -159,65 +155,70 @@ def arp(packet, attKey, printKey):
 	# Properly unpack and format the destination MAC address.
 	arpTargetHardAddress = '%.2x:%.2x:%.2x:%.2x:%.2x:%.2x' % (ord(arpTargetHardAddress[0]), ord(arpTargetHardAddress[1]), ord(arpTargetHardAddress[2]), ord(arpTargetHardAddress[3]), ord(arpTargetHardAddress[4]), ord(arpTargetHardAddress[5]))
 	
-	# If the printKey is 0, header information will be printed.
-	# 	If the attKey is *, all attributes will be printed.
-	# 	If the attKey is not *, the attribute the attKey corresponds to will be printed.
-	# If the printKey is not 0, then do not print out the header information.
-	# 	If the attKey is not *, the attribute the attKey corresponds to will be returned.
+	# Check if the print key is 0.
+	# If true, header information will be printed.
+	# 	Check if the user selected extracted attribute index is 0.
+	#	If true, all attributes will be printed.
+	#	If false, the attribute the user selected extracted attribute index corresponds to will be printed.
+	# If false, the attribute the user selected attribute index corresponds to will be returned.
 	if printKey == 0:
 		# Print ARP Header
-		print('\n*******************\n******* ARP *******\n*******************')
+		unpackedInfo.append('\n*******************\n******* ARP *******\n*******************')
 		
-		if (attKey == 0) or (attKey == '*'):
-			print('Hardware Type: ' + str(arpHardwareType))
-		if (attKey == 1) or (attKey == '*'):	
-			print('Protocol Type: ' + str(arpProtocolType))
-		if (attKey == 2) or (attKey == '*'):	
-			print('Hardware Address Length: ' + str(arpHardAddressLength))
-		if (attKey == 3) or (attKey == '*'):	
-			print('Protocol Address Length: ' + str(arpProtAddressLength))
-		if (attKey == 4) or (attKey == '*'):	
-			print('Operation: ' + str(arpOperation))
-		if (attKey == 5) or (attKey == '*'):	
-			print('Sender Hardware Address: ' + str(arpSenderHardAddress))
-		if (attKey == 6) or (attKey == '*'):	
-			print('Sender Protocol Address: ' + str(arpSenderProtAddress))
-		if (attKey == 7) or (attKey == '*'):	
-			print('Target Hardware Address: ' + str(arpTargetHardAddress))
-		if (attKey == 8) or (attKey == '*'):	
-			print('Target Protocol Address: ' + str(arpTargetProtAddress))
+		if (extractedAttIndex == 1) or (extractedAttIndex == 0):
+			unpackedInfo.append('Hardware Type: ' + str(arpHardwareType))
+		if (extractedAttIndex == 2) or (extractedAttIndex == 0):	
+			unpackedInfo.append('Protocol Type: ' + str(arpProtocolType))
+		if (extractedAttIndex == 3) or (extractedAttIndex == 0):	
+			unpackedInfo.append('Hardware Address Length: ' + str(arpHardAddressLength))
+		if (extractedAttIndex == 4) or (extractedAttIndex == 0):	
+			unpackedInfo.append('Protocol Address Length: ' + str(arpProtAddressLength))
+		if (extractedAttIndex == 5) or (extractedAttIndex == 0):	
+			unpackedInfo.append('Operation: ' + str(arpOperation))
+		if (extractedAttIndex == 6) or (extractedAttIndex == 0):	
+			unpackedInfo.append('Sender Hardware Address: ' + str(arpSenderHardAddress))
+		if (extractedAttIndex == 7) or (extractedAttIndex == 0):	
+			unpackedInfo.append('Sender Protocol Address: ' + str(arpSenderProtAddress))
+		if (extractedAttIndex == 8) or (extractedAttIndex == 0):	
+			unpackedInfo.append('Target Hardware Address: ' + str(arpTargetHardAddress))
+		if (extractedAttIndex == 9) or (extractedAttIndex == 0):	
+			unpackedInfo.append('Target Protocol Address: ' + str(arpTargetProtAddress))
 			
 		# Separator	
-		print('\n----------------------------------------')	
+		unpackedInfo.append('\n----------------------------------------')	
 	else:
-		if (attKey == 0):
+		if (extractedAttIndex == 1):
 			return str(arpHardwareType)
-		if (attKey == 1):	
+		if (extractedAttIndex == 2):	
 			return str(arpProtocolType)
-		if (attKey == 2):	
+		if (extractedAttIndex == 3):	
 			return str(arpHardAddressLength)
-		if (attKey == 3):	
+		if (extractedAttIndex == 4):	
 			return str(arpProtAddressLength)
-		if (attKey == 4):	
+		if (extractedAttIndex == 5):	
 			return str(arpOperation)
-		if (attKey == 5):	
+		if (extractedAttIndex == 6):	
 			return str(arpSenderHardAddress)
-		if (attKey == 6):	
+		if (extractedAttIndex == 7):	
 			return str(arpSenderProtAddress)
-		if (attKey == 7):	
+		if (extractedAttIndex == 8):	
 			return str(arpTargetHardAddress)
-		if (attKey == 8):	
+		if (extractedAttIndex == 9):	
 			return str(arpTargetProtAddress)
 
-def ip(packet, attKey, printKey):
+def ip(packet, extractedAttIndex, printKey):
+	# Header lengths.
+	ethHeaderLength = 14
+	ipHeaderLength = 20
+	
 	# Get IP header using begin and end.
 	# Specific Linux and Windows calibration is needed.
 	if os == linux:	
-		begin = constEthHeaderLength
-		end = begin + constIPHeaderLength
+		begin = ethHeaderLength
+		end = begin + ipHeaderLength
 	elif os == windows:
 		begin = 0
-		end = begin + constIPHeaderLength
+		end = begin + ipHeaderLength
 	ipHeader = packet[begin:end]
 
 	# Unpack the header because it originally in hex.
@@ -226,7 +227,7 @@ def ip(packet, attKey, printKey):
 	# B signifies we are unpacking an integer of size 1 byte.
 	# H signifies we are unpacking an integer of size 2 bytes.
 	# 4s signifies we are unpacking a string of size 4 bytes.
-	ipHeaderUnpacked = unpack('!BBHHHBBH4s4s' , ipHeader)
+	ipHeaderUnpacked = struct.unpack('!BBHHHBBH4s4s' , ipHeader)
 	
 	# The first B is 1 byte and contains the version and header length.
 	# Both are 4 bits each, split ipHeaderUnpacked[0] in "half".
@@ -267,80 +268,86 @@ def ip(packet, attKey, printKey):
 	# The second 4s is 4 bytes and contains the dest address.
 	ipDestAddress = socket.inet_ntoa(ipHeaderUnpacked[9]);
 
-	# If the printKey is 0, header information will be printed.
-	# 	If the attKey is *, all attributes will be printed.
-	# 	If the attKey is not *, the attribute the attKey corresponds to will be printed.
-	# If the printKey is not 0, then do not print out the header information.
-	# 	If the attKey is not *, the attribute the attKey corresponds to will be returned.
+	# Check if the print key is 0.
+	# If true, header information will be printed.
+	# 	Check if the user selected extracted attribute index is 0.
+	#	If true, all attributes will be printed.
+	#	If false, the attribute the user selected extracted attribute index corresponds to will be printed.
+	# If false, the attribute the user selected attribute index corresponds to will be returned.
 	if printKey == 0:
 		# Print IP Header
 		# Some segments of the header are switched back to hex form because that
 		# 	is the format wireshark has it.
-		print('\n********************\n******** IP ********\n********************')
+		unpackedInfo.append('\n********************\n******** IP ********\n********************')
 		
-		if (attKey == 0) or (attKey == '*'):
-			print('Version: ' + str(ipVersion))
-		if (attKey == 1) or (attKey == '*'):
-			print('Header Length: ' + str(ipHeaderLength) + ' 32-bit words')
-		if (attKey == 2) or (attKey == '*'):
-			print('Differentiated Services Code Point: ' + format(ipDSCP, '#04X') + ' , ' + str(ipDSCP))
-		if (attKey == 3) or (attKey == '*'):
-			print('Explicit Congestion Notification: ' + format(ipECN, '#04X') + ' , ' + str(ipECN))
-		if (attKey == 4) or (attKey == '*'):
-			print('Total Length: ' + str(ipTotalLength) + ' bytes')
-		if (attKey == 5) or (attKey == '*'):
-			print('Identification: ' + format(ipIdentification, '#04X') + ' , ' + str(ipIdentification))
-		if (attKey == 6) or (attKey == '*'):
-			print('Flags: ' + format(ipFlags, '#04X') + ' , ' + str(ipFlags))
-		if (attKey == 7) or (attKey == '*'):
-			print('Fragment Offset: ' + str(ipFragmentOffset) + ' eight-byte blocks')
-		if (attKey == 8) or (attKey == '*'):
-			print('Time to Live: ' + str(ipTimeToLive) + ' hops')
-		if (attKey == 9) or (attKey == '*'):
-			print('Protocol: ' + str(ipProtocol))
-		if (attKey == 10) or (attKey == '*'):
-			print('Header Checksum: ' + format(ipHeaderChecksum, '#04X'))
-		if (attKey == 11) or (attKey == '*'):
-			print('Source Address: ' + str(ipSourceAddress))
-		if (attKey == 12) or (attKey == '*'):
-			print('Destination Address: ' + str(ipDestAddress))
+		if (extractedAttIndex == 1) or (extractedAttIndex == 0):
+			unpackedInfo.append('Version: ' + str(ipVersion))
+		if (extractedAttIndex == 2) or (extractedAttIndex == 0):
+			unpackedInfo.append('Header Length: ' + str(ipHeaderLength) + ' 32-bit words')
+		if (extractedAttIndex == 3) or (extractedAttIndex == 0):
+			unpackedInfo.append('Differentiated Services Code Point: ' + format(ipDSCP, '#04X') + ' , ' + str(ipDSCP))
+		if (extractedAttIndex == 4) or (extractedAttIndex == 0):
+			unpackedInfo.append('Explicit Congestion Notification: ' + format(ipECN, '#04X') + ' , ' + str(ipECN))
+		if (extractedAttIndex == 5) or (extractedAttIndex == 0):
+			unpackedInfo.append('Total Length: ' + str(ipTotalLength) + ' bytes')
+		if (extractedAttIndex == 6) or (extractedAttIndex == 0):
+			unpackedInfo.append('Identification: ' + format(ipIdentification, '#04X') + ' , ' + str(ipIdentification))
+		if (extractedAttIndex == 7) or (extractedAttIndex == 0):
+			unpackedInfo.append('Flags: ' + format(ipFlags, '#04X') + ' , ' + str(ipFlags))
+		if (extractedAttIndex == 8) or (extractedAttIndex == 0):
+			unpackedInfo.append('Fragment Offset: ' + str(ipFragmentOffset) + ' eight-byte blocks')
+		if (extractedAttIndex == 9) or (extractedAttIndex == 0):
+			unpackedInfo.append('Time to Live: ' + str(ipTimeToLive) + ' hops')
+		if (extractedAttIndex == 10) or (extractedAttIndex == 0):
+			unpackedInfo.append('Protocol: ' + str(ipProtocol))
+		if (extractedAttIndex == 11) or (extractedAttIndex == 0):
+			unpackedInfo.append('Header Checksum: ' + format(ipHeaderChecksum, '#04X'))
+		if (extractedAttIndex == 12) or (extractedAttIndex == 0):
+			unpackedInfo.append('Source Address: ' + str(ipSourceAddress))
+		if (extractedAttIndex == 13) or (extractedAttIndex == 0):
+			unpackedInfo.append('Destination Address: ' + str(ipDestAddress))
 	else:
-		if (attKey == 0):
+		if (extractedAttIndex == 1):
 			return str(ipVersion)
-		if (attKey == 1):
+		if (extractedAttIndex == 2):
 			return str(ipHeaderLength)
-		if (attKey == 2):
+		if (extractedAttIndex == 3):
 			return format(ipDSCP, '#04X')
-		if (attKey == 3):
+		if (extractedAttIndex == 4):
 			return format(ipECN, '#04X')
-		if (attKey == 4):
+		if (extractedAttIndex == 5):
 			return str(ipTotalLength)
-		if (attKey == 5):
+		if (extractedAttIndex == 6):
 			return format(ipIdentification, '#04X')
-		if (attKey == 6):
+		if (extractedAttIndex == 7):
 			return format(ipFlags, '#04X')
-		if (attKey == 7):
+		if (extractedAttIndex == 8):
 			return str(ipFragmentOffset)
-		if (attKey == 8):
+		if (extractedAttIndex == 9):
 			return str(ipTimeToLive)
-		if (attKey == 9):
+		if (extractedAttIndex == 10):
 			return str(ipProtocol)
-		if (attKey == 10):
+		if (extractedAttIndex == 11):
 			return format(ipHeaderChecksum, '#04X')
-		if (attKey == 11):
+		if (extractedAttIndex == 12):
 			return str(ipSourceAddress)
-		if (attKey == 12):
+		if (extractedAttIndex == 13):
 			return str(ipDestAddress)
 			
-def icmp(packet, attKey, printKey):
+def icmp(packet, extractedAttIndex, printKey):
+	# Header lengths.
+	ethHeaderLength = 14
+	ipHeaderLength = 20
+	icmpHeaderLength = 8
+	
 	# Get ICMP header using begin and end.
 	# Specific Linux and Windows calibration is needed.
 	if os == linux:
-		begin = constEthHeaderLength + constIPHeaderLength
-		end = begin + constICMPHeaderLength
+		begin = ethHeaderLength + ipHeaderLength
+		end = begin + icmpHeaderLength
 	elif os == windows:
-		begin = constIPHeaderLength
-		end = begin + constICMPHeaderLength
+		begin = ipHeaderLength
+		end = begin + icmpHeaderLength
 	icmpHeader = packet[begin:end]
 
 	# Unpack the header because it originally in hex.
@@ -349,7 +356,7 @@ def icmp(packet, attKey, printKey):
 	# B signifies we are unpacking an integer of size 1 byte.
 	# H signifies we are unpacking an integer of size 2 bytes.
 	# L signifies we are unpacking a long of size 4 bytes.
-	icmpHeaderUnpacked = unpack('!BBHL', icmpHeader)
+	icmpHeaderUnpacked = struct.unpack('!BBHL', icmpHeader)
 
 	# The first B is 1 byte and contains the type.
 	icmpType = icmpHeaderUnpacked[0]
@@ -365,78 +372,84 @@ def icmp(packet, attKey, printKey):
 		# The first L is 4 bytes and contains the rest of the header.
 		icmpIdentifier = icmpHeaderUnpacked[3] >> 16
 		icmpSeqNumber = icmpHeaderUnpacked[3] & 0xFFFF
-
-	# If the printKey is 0, header information will be printed.
-	# 	If the attKey is *, all attributes will be printed.
-	# 	If the attKey is not *, the attribute the attKey corresponds to will be printed.
-	# If the printKey is not 0, then do not print out the header information.
-	# 	If the attKey is not *, the attribute the attKey corresponds to will be returned.
+	
+	# Check if the print key is 0.
+	# If true, header information will be printed.
+	# 	Check if the user selected extracted attribute index is 0.
+	#	If true, all attributes will be printed.
+	#	If false, the attribute the user selected extracted attribute index corresponds to will be printed.
+	# If false, the attribute the user selected attribute index corresponds to will be returned.
 	if printKey == 0:
 		if (icmpType == 0) or (icmpType == 8):
 			# Print ICMP Header
 			# Some segments of the header are switched back to hex form because that
 			# 	is the format wireshark has it.
-			print('\n********************\n******* ICMP *******\n********************')
+			unpackedInfo.append('\n********************\n******* ICMP *******\n********************')
 			
-			if (attKey == 0) or (attKey == '*'):
-				print('Type: ' + str(icmpType))
-			if (attKey == 1) or (attKey == '*'):
-				print('Code: ' + str(icmpCode))
-			if (attKey == 2) or (attKey == '*'):
-				print('Checksum: ' + format(icmpChecksum, '#04X'))
-			if (attKey == 3) or (attKey == '*'):
-				print('Identifier: ' + str(icmpIdentifier))
-			if (attKey == 4) or (attKey == '*'):
-				print('Sequence Number: ' + str(icmpSeqNumber))
+			if (extractedAttIndex == 1) or (extractedAttIndex == 0):
+				unpackedInfo.append('Type: ' + str(icmpType))
+			if (extractedAttIndex == 2) or (extractedAttIndex == 0):
+				unpackedInfo.append('Code: ' + str(icmpCode))
+			if (extractedAttIndex == 3) or (extractedAttIndex == 0):
+				unpackedInfo.append('Checksum: ' + format(icmpChecksum, '#04X'))
+			if (extractedAttIndex == 4) or (extractedAttIndex == 0):
+				unpackedInfo.append('Identifier: ' + str(icmpIdentifier))
+			if (extractedAttIndex == 5) or (extractedAttIndex == 0):
+				unpackedInfo.append('Sequence Number: ' + str(icmpSeqNumber))
 		else:
-			print('\n********************\n******* ICMP *******\n********************')
+			unpackedInfo.append('\n********************\n******* ICMP *******\n********************')
 			
-			if (attKey == 0) or (attKey == '*'):
-				print('Type: ' + str(icmpType))
-			if (attKey == 1) or (attKey == '*'):
-				print('Code: ' + str(icmpCode))
-			if (attKey == 2) or (attKey == '*'):
-				print('Checksum: ' + format(icmpChecksum, '#04X'))
-			if (attKey == 3) or (attKey == '*'):
-				print('Attribute not available.')
-			if (attKey == 4) or (attKey == '*'):
-				print('Attribute not available.')
+			if (extractedAttIndex == 1) or (extractedAttIndex == 0):
+				unpackedInfo.append('Type: ' + str(icmpType))
+			if (extractedAttIndex == 2) or (extractedAttIndex == 0):
+				unpackedInfo.append('Code: ' + str(icmpCode))
+			if (extractedAttIndex == 3) or (extractedAttIndex == 0):
+				unpackedInfo.append('Checksum: ' + format(icmpChecksum, '#04X'))
+			if (extractedAttIndex == 4) or (extractedAttIndex == 0):
+				unpackedInfo.append('Attribute not available.')
+			if (extractedAttIndex == 5) or (extractedAttIndex == 0):
+				unpackedInfo.append('Attribute not available.')
 				
 		# Separator	
-		print('\n----------------------------------------')
+		unpackedInfo.append('\n----------------------------------------')
 	else:
 		if (icmpType == 0) or (icmpType == 8):
-			if (attKey == 0):
+			if (extractedAttIndex == 1):
 				return str(icmpType)
-			if (attKey == 1):
+			if (extractedAttIndex == 2):
 				return str(icmpCode)
-			if (attKey == 2):
+			if (extractedAttIndex == 3):
 				return format(icmpChecksum, '#04X')
-			if (attKey == 3):
+			if (extractedAttIndex == 4):
 				return str(icmpIdentifier)
-			if (attKey == 4):
+			if (extractedAttIndex == 5):
 				return str(icmpSeqNumber)
 		else:			
-			if (attKey == 0):
+			if (extractedAttIndex == 1):
 				return str(icmpType)
-			if (attKey == 1):
+			if (extractedAttIndex == 2):
 				return str(icmpCode)
-			if (attKey == 2):
+			if (extractedAttIndex == 3):
 				return format(icmpChecksum, '#04X')
-			if (attKey == 3):
+			if (extractedAttIndex == 4):
 				return 'Attribute not available.'
-			if (attKey == 4):
+			if (extractedAttIndex == 5):
 				return 'Attribute not available.'
 	
-def tcp(packet, attKey, printKey):
+def tcp(packet, extractedAttIndex, printKey):
+	# Header lengths.
+	ethHeaderLength = 14
+	ipHeaderLength = 20
+	tcpHeaderLength = 20
+
 	# Get TCP header using begin and end.
 	# Specific Linux and Windows calibration is needed.
 	if os == linux:
-		begin = constEthHeaderLength + constIPHeaderLength
-		end = begin + constTCPHeaderLength
+		begin = ethHeaderLength + ipHeaderLength
+		end = begin + tcpHeaderLength
 	elif os == windows:
-		begin = constIPHeaderLength
-		end = begin + constTCPHeaderLength
+		begin = ipHeaderLength
+		end = begin + tcpHeaderLength
 	tcpHeader = packet[begin:end]
 
 	# Unpack the header because it originally in hex.
@@ -445,7 +458,7 @@ def tcp(packet, attKey, printKey):
 	# H signifies we are unpacking an integer of size 2 bytes.
 	# L signifies we are unpacking a long of size 4 bytes.
 	# B signifies we are unpacking an integer of size 1 byte.
-	tcpHeaderUnpacked = unpack('!HHLLBBHHH', tcpHeader)
+	tcpHeaderUnpacked = struct.unpack('!HHLLBBHHH', tcpHeader)
 	
 	# The first H is 2 bytes and contains the source port.
 	tcpSourcePort = tcpHeaderUnpacked[0]
@@ -486,111 +499,117 @@ def tcp(packet, attKey, printKey):
 	
 	# The fifth H is 2 bytes and constains the urgent pointer.
 	tcpUrgentPointer = tcpHeaderUnpacked[8]
-
-	# If the printKey is 0, header information will be printed.
-	# 	If the attKey is *, all attributes will be printed.
-	# 	If the attKey is not *, the attribute the attKey corresponds to will be printed.
-	# If the printKey is not 0, then do not print out the header information.
-	# 	If the attKey is not *, the attribute the attKey corresponds to will be returned.
+	
+	# Check if the print key is 0.
+	# If true, header information will be printed.
+	# 	Check if the user selected extracted attribute index is 0.
+	#	If true, all attributes will be printed.
+	#	If false, the attribute the user selected extracted attribute index corresponds to will be printed.
+	# If false, the attribute the user selected attribute index corresponds to will be returned.
 	if printKey == 0:
 		# Print TCP Header
 		# Some segments of the header are switched back to hex form because that
 		# 	is the format wireshark has it.
-		print('\n*******************\n******* TCP *******\n*******************')
+		unpackedInfo.append('\n*******************\n******* TCP *******\n*******************')
 	
-		if (attKey == 0) or (attKey == '*'):
-			print('Source Port: ' + str(tcpSourcePort))
-		if (attKey == 1) or (attKey == '*'):
-			print('Destination Port: ' + str(tcpDestPort))
-		if (attKey == 2) or (attKey == '*'):
-			print('Sequence Number: ' + str(tcpSeqNumber))
-		if (attKey == 3) or (attKey == '*'):
-			print('Acknowledgment Number: ' + str(tcpAckNumber))
-		if (attKey == 4) or (attKey == '*'):
-			print('Data Offset: ' + str(tcpDataOffset) + ' 32-bit words')
-		if (attKey == 5) or (attKey == '*'):
-			print('Reserved: ' + format(tcpReserved, '03b') + '. .... ....')
-		if (attKey == 6) or (attKey == '*'):
-			print('NS Flag:  ' + '...' + format(tcpNSFlag, '01b') + ' .... ....')
-		if (attKey == 7) or (attKey == '*'):
-			print('CWR Flag: ' + '.... ' + format(tcpCWRFlag, '01b') + '... ....')
-		if (attKey == 8) or (attKey == '*'):
-			print('ECE Flag: ' + '.... .' + format(tcpECEFlag, '01b') + '.. ....')
-		if (attKey == 9) or (attKey == '*'):
-			print('URG Flag: ' + '.... ..' + format(tcpURGFlag, '01b') + '. ....')
-		if (attKey == 10) or (attKey == '*'):
-			print('ACK Flag: ' + '.... ...' + format(tcpACKFlag, '01b') + ' ....')
-		if (attKey == 11) or (attKey == '*'):
-			print('PSH Flag: ' + '.... .... ' + format(tcpPSHFlag, '01b') + '...')
-		if (attKey == 12) or (attKey == '*'):
-			print('RST Flag: ' + '.... .... .' + format(tcpRSTFlag, '01b') + '..')
-		if (attKey == 13) or (attKey == '*'):
-			print('SYN Flag: ' + '.... .... ..' + format(tcpSYNFlag, '01b') + '.')
-		if (attKey == 14) or (attKey == '*'):
-			print('FIN Flag: ' + '.... .... ...' + format(tcpFINFlag, '01b'))
-		if (attKey == 15) or (attKey == '*'):
-			print('Window Size: ' + str(tcpWindowSize) + ' bytes')
-		if (attKey == 16) or (attKey == '*'):
-			print('Urgent Pointer: ' + str(tcpUrgentPointer))
-		if (attKey == 17) or (attKey == '*'):
-			print('Checksum: ' + format(tcpChecksum, '#04X'))
+		if (extractedAttIndex == 1) or (extractedAttIndex == 0):
+			unpackedInfo.append('Source Port: ' + str(tcpSourcePort))
+		if (extractedAttIndex == 2) or (extractedAttIndex == 0):
+			unpackedInfo.append('Destination Port: ' + str(tcpDestPort))
+		if (extractedAttIndex == 3) or (extractedAttIndex == 0):
+			unpackedInfo.append('Sequence Number: ' + str(tcpSeqNumber))
+		if (extractedAttIndex == 4) or (extractedAttIndex == 0):
+			unpackedInfo.append('Acknowledgment Number: ' + str(tcpAckNumber))
+		if (extractedAttIndex == 5) or (extractedAttIndex == 0):
+			unpackedInfo.append('Data Offset: ' + str(tcpDataOffset) + ' 32-bit words')
+		if (extractedAttIndex == 6) or (extractedAttIndex == 0):
+			unpackedInfo.append('Reserved: ' + format(tcpReserved, '03b') + '. .... ....')
+		if (extractedAttIndex == 7) or (extractedAttIndex == 0):
+			unpackedInfo.append('NS Flag:  ' + '...' + format(tcpNSFlag, '01b') + ' .... ....')
+		if (extractedAttIndex == 8) or (extractedAttIndex == 0):
+			unpackedInfo.append('CWR Flag: ' + '.... ' + format(tcpCWRFlag, '01b') + '... ....')
+		if (extractedAttIndex == 9) or (extractedAttIndex == 0):
+			unpackedInfo.append('ECE Flag: ' + '.... .' + format(tcpECEFlag, '01b') + '.. ....')
+		if (extractedAttIndex == 10) or (extractedAttIndex == 0):
+			unpackedInfo.append('URG Flag: ' + '.... ..' + format(tcpURGFlag, '01b') + '. ....')
+		if (extractedAttIndex == 11) or (extractedAttIndex == 0):
+			unpackedInfo.append('ACK Flag: ' + '.... ...' + format(tcpACKFlag, '01b') + ' ....')
+		if (extractedAttIndex == 12) or (extractedAttIndex == 0):
+			unpackedInfo.append('PSH Flag: ' + '.... .... ' + format(tcpPSHFlag, '01b') + '...')
+		if (extractedAttIndex == 13) or (extractedAttIndex == 0):
+			unpackedInfo.append('RST Flag: ' + '.... .... .' + format(tcpRSTFlag, '01b') + '..')
+		if (extractedAttIndex == 14) or (extractedAttIndex == 0):
+			unpackedInfo.append('SYN Flag: ' + '.... .... ..' + format(tcpSYNFlag, '01b') + '.')
+		if (extractedAttIndex == 15) or (extractedAttIndex == 0):
+			unpackedInfo.append('FIN Flag: ' + '.... .... ...' + format(tcpFINFlag, '01b'))
+		if (extractedAttIndex == 16) or (extractedAttIndex == 0):
+			unpackedInfo.append('Window Size: ' + str(tcpWindowSize) + ' bytes')
+		if (extractedAttIndex == 17) or (extractedAttIndex == 0):
+			unpackedInfo.append('Urgent Pointer: ' + str(tcpUrgentPointer))
+		if (extractedAttIndex == 18) or (extractedAttIndex == 0):
+			unpackedInfo.append('Checksum: ' + format(tcpChecksum, '#04X'))
 	
 		# Separator	
-		print('\n----------------------------------------')	
+		unpackedInfo.append('\n----------------------------------------')	
 	else:
-		if (attKey == 0):
+		if (extractedAttIndex == 1):
 			return str(tcpSourcePort)
-		if (attKey == 1):
+		if (extractedAttIndex == 2):
 			return str(tcpDestPort)
-		if (attKey == 2):
+		if (extractedAttIndex == 3):
 			return str(tcpSeqNumber)
-		if (attKey == 3):
+		if (extractedAttIndex == 4):
 			return str(tcpAckNumber)
-		if (attKey == 4):
+		if (extractedAttIndex == 5):
 			return str(tcpDataOffset)
-		if (attKey == 5):
+		if (extractedAttIndex == 6):
 			return format(tcpReserved, '03b')
-		if (attKey == 6):
+		if (extractedAttIndex == 7):
 			return format(tcpNSFlag, '01b')
-		if (attKey == 7):
+		if (extractedAttIndex == 8):
 			return format(tcpCWRFlag, '01b')
-		if (attKey == 8):
+		if (extractedAttIndex == 9):
 			return format(tcpECEFlag, '01b')
-		if (attKey == 9):
+		if (extractedAttIndex == 10):
 			return format(tcpURGFlag, '01b')
-		if (attKey == 10):
+		if (extractedAttIndex == 11):
 			return format(tcpACKFlag, '01b')
-		if (attKey == 11):
+		if (extractedAttIndex == 12):
 			return format(tcpPSHFlag, '01b')
-		if (attKey == 12):
+		if (extractedAttIndex == 13):
 			return format(tcpRSTFlag, '01b')
-		if (attKey == 13):
+		if (extractedAttIndex == 14):
 			return format(tcpSYNFlag, '01b')
-		if (attKey == 14):
+		if (extractedAttIndex == 15):
 			return format(tcpFINFlag, '01b')
-		if (attKey == 15):
+		if (extractedAttIndex == 16):
 			return str(tcpWindowSize)
-		if (attKey == 16):
+		if (extractedAttIndex == 17):
 			return str(tcpUrgentPointer)
-		if (attKey == 17):
+		if (extractedAttIndex == 18):
 			return format(tcpChecksum, '#04X')
 
-def udp(packet, attKey, printKey):
+def udp(packet, extractedAttIndex, printKey):
+	# Header lengths.
+	ethHeaderLength = 14
+	ipHeaderLength = 20
+	udpHeaderLength = 8
+	
 	# Get UDP header using begin and end.
 	# Specific Linux and Windows calibration is needed.
 	if os == linux:
-		begin = constEthHeaderLength + constIPHeaderLength
-		end = begin + constUDPHeaderLength
+		begin = ethHeaderLength + ipHeaderLength
+		end = begin + udpHeaderLength
 	elif os == windows:
-		begin = constIPHeaderLength
-		end = begin + constUDPHeaderLength
+		begin = ipHeaderLength
+		end = begin + udpHeaderLength
 	udpHeader = packet[begin:end]
 
 	# Unpack the header because it originally in hex.
 	# The regular expression helps unpack the header.
 	# ! signifies we are unpacking a network endian.
 	# H signifies we are unpacking an integer of size 2 bytes.
-	udpHeaderUnpacked = unpack('!HHHH', udpHeader)
+	udpHeaderUnpacked = struct.unpack('!HHHH', udpHeader)
 	 
 	# The first H is 2 bytes and contains the source port.
 	udpSourcePort = udpHeaderUnpacked[0]
@@ -604,39 +623,83 @@ def udp(packet, attKey, printKey):
 	# The fourth H is 2 bytes and contains the header checksum.
 	udpChecksum = udpHeaderUnpacked[3]
 	
-	# If the printKey is 0, header information will be printed.
-	# 	If the attKey is *, all attributes will be printed.
-	# 	If the attKey is not *, the attribute the attKey corresponds to will be printed.
-	# If the printKey is not 0, then do not print out the header information.
-	# 	If the attKey is not *, the attribute the attKey corresponds to will be returned.
+	# Check if the print key is 0.
+	# If true, header information will be printed.
+	# 	Check if the user selected extracted attribute index is 0.
+	#	If true, all attributes will be printed.
+	#	If false, the attribute the user selected extracted attribute index corresponds to will be printed.
+	# If false, the attribute the user selected attribute index corresponds to will be returned.
 	if printKey == 0:
 		# Print UDP Header
-		print('\n*******************\n******* UDP *******\n*******************')
+		unpackedInfo.append('\n*******************\n******* UDP *******\n*******************')
 		
-		if (attKey == 0) or (attKey == '*'):
-			print('Source Port: ' + str(udpSourcePort))
-		if (attKey == 1) or (attKey == '*'):
-			print('Destination Port: ' + str(udpDestPort))
-		if (attKey == 2) or (attKey == '*'):
-			print('Length: ' + str(udpLength) + ' bytes')
-		if (attKey == 3) or (attKey == '*'):
-			print('Checksum: ' + format(udpChecksum, '#04X'))
+		if (extractedAttIndex == 1) or (extractedAttIndex == 0):
+			unpackedInfo.append('Source Port: ' + str(udpSourcePort))
+		if (extractedAttIndex == 2) or (extractedAttIndex == 0):
+			unpackedInfo.append('Destination Port: ' + str(udpDestPort))
+		if (extractedAttIndex == 3) or (extractedAttIndex == 0):
+			unpackedInfo.append('Length: ' + str(udpLength) + ' bytes')
+		if (extractedAttIndex == 4) or (extractedAttIndex == 0):
+			unpackedInfo.append('Checksum: ' + format(udpChecksum, '#04X'))
 
 		# Separator	
-		print('\n----------------------------------------')	
+		unpackedInfo.append('\n----------------------------------------')	
 	else:
-		if (attKey == 0):
+		if (extractedAttIndex == 1):
 			return str(udpSourcePort)
-		if (attKey == 1):
+		if (extractedAttIndex == 2):
 			return str(udpDestPort)
-		if (attKey == 2):
+		if (extractedAttIndex == 3):
 			return str(udpLength)
-		if (attKey == 3):
+		if (extractedAttIndex == 4):
 			return format(udpChecksum, '#04X')
+			
+def findProtocol(packet):
+	# Will hold the packet protocol.
+	packetProtocol = ''
 	
-def unpackAndDisplay(packet):
+	# If the OS is Linux, unpack Ethernet's protocol.
+	# If the OS is Windows, mimic unpacking Ethernet's protocol.
+	if os == linux:
+		ethProtocol = eth(packet, 3, 1)
+		ethProtocol = int(ethProtocol)
+	elif os == windows:
+		ethProtocol = 8
+
+	# Find if the Ethernet protocol is ARP or IP.
+	# If the protocol is 1544, meaning ARP, then set packetProtocol to 0.
+	# If the protocol is 8, meaning IP, find the protocol within IP.
+	if ethProtocol == 1544:
+		packetProtocol = 1
+	elif ethProtocol == 8:
+		# Unpack IP's protocol.
+		ipProtocol = ip(packet, 10, 1)
+		ipProtocol = int(ipProtocol)
+		
+		# If the protocol is 1, meaning ICMP, then set packetProtocol to 2 (Linux) or 1 (Windows).
+		# If the protocol is 6, meaning TCP, then set packetProtocol to 3 (Linux) or 2 (Windows).
+		# If the protocol is 17, meaning UDP, then set packetProtocol to 4 (Linux) or 3 (Windows).
+		if os == linux:
+			if ipProtocol == 1:
+				packetProtocol = 2
+			elif ipProtocol == 6:
+				packetProtocol = 3
+			elif ipProtocol == 17:
+				packetProtocol = 4
+		elif os == windows:
+			if ipProtocol == 1:
+				packetProtocol = 1
+			elif ipProtocol == 6:
+				packetProtocol = 2
+			elif ipProtocol == 17:
+				packetProtocol = 3
+			
+	# Return the packet protocol.
+	return packetProtocol
+	
+def extractAllAtt(packet):
 	# All attributes for each protocol will be displayed.
-	attKey = '*'
+	extractedAttIndex = 0
 	
 	# Attributes will be printed.
 	printKey = 0
@@ -645,541 +708,207 @@ def unpackAndDisplay(packet):
 	# If the OS is Windows, mimic unpacking Ethernet's protocol.
 	if os == linux:
 		# Unpack the Ethernet (MAC) information.
-		eth(packet, attKey, printKey)
+		eth(packet, extractedAttIndex, printKey)
 	
 		# Find the packet's Ethernet protocol.
-		ethProtocol = int(eth(packet, 2, 1))
+		ethProtocol = eth(packet, 3, 1)
+		ethProtocol = int(ethProtocol)
 	elif os == windows:
 		ethProtocol = 8
 
-	# Find if the Ethernet frame is ARP or IP.
+	# Find if the Ethernet protocol is ARP or IP.
 	if ethProtocol == 1544:
 		# Unpack the ARP information.
-		arp(packet, attKey, printKey)
+		arp(packet, extractedAttIndex, printKey)
 	elif ethProtocol == 8:
-		# Unpack the IP information.
-		ip(packet, attKey, printKey)
+		# Unpack IP's information.
+		ip(packet, extractedAttIndex, printKey)
 		
 		# Find the packet's IP protocol.
-		ipProtocol = int(ip(packet, 9, 1))
+		ipProtocol = ip(packet, 10, 1)
+		ipProtocol = int(ipProtocol)
 			
 		# If the protocol is 1, meaning ICMP, then unpack the ICMP information.
 		# If the protocol is 6, meaning TCP, then unpack the TCP information.
 		# If the protocol is 17, meaning UDP, then unpack the UDP information.
 		if ipProtocol == 1:
-			icmp(packet, attKey, printKey)
+			icmp(packet, extractedAttIndex, printKey)
 		elif ipProtocol == 6:
-			tcp(packet, attKey, printKey)
+			tcp(packet, extractedAttIndex, printKey)
 		elif ipProtocol == 17:
-			udp(packet, attKey, printKey)
+			udp(packet, extractedAttIndex, printKey)
 
-def unpackAndSave(packet):
-	# If the OS is Linux, unpack Ethernet's protocol.
-	# If the OS is Windows, mimic unpacking Ethernet's protocol.
+def filterAndExtract(packet, filteredProtocolIndex, extractedAttIndex):
+	# Get the protocol index of the packet.
+	protocolIndex = findProtocol(packet)
+	
 	if os == linux:
-		# Find the packet's Ethernet protocol.
-		ethProtocol = int(eth(packet, 2, 1))
+		if (filteredProtocolIndex == protocolIndex) or (filteredProtocolIndex == 0):
+			# Attributes will be printed.
+			printKey = 0
+
+			# Find the user selected filtered protocol index.
+			if filteredProtocolIndex == 0:
+				if extractedAttIndex >= 1:
+					eth(packet, extractedAttIndex, printKey)
+
+					# Separator
+					unpackedInfo.append('\n----------------------------------------')
+				elif extractedAttIndex == 0:
+					extractAllAtt(packet)
+			elif filteredProtocolIndex == 1:
+				# The user selected extracted attribute index will be calibrated (if needed) to specify which attribute to extract.
+				if extractedAttIndex >= 4:
+					arp(packet, extractedAttIndex - 3, printKey)
+				elif extractedAttIndex >= 1:
+					eth(packet, extractedAttIndex, printKey)
+
+					# Separator
+					unpackedInfo.append('\n----------------------------------------')
+				elif extractedAttIndex == 0:
+					extractAllAtt(packet)
+			elif filteredProtocolIndex == 2:
+				if extractedAttIndex >= 17:
+					icmp(packet, extractedAttIndex - 16, printKey)
+				elif extractedAttIndex >= 4:
+					ip(packet, extractedAttIndex - 3, printKey)
+
+					unpackedInfo.append('\n----------------------------------------')	
+				elif extractedAttIndex >= 1:	
+					eth(packet, extractedAttIndex, printKey)
+
+					unpackedInfo.append('\n----------------------------------------')
+				elif extractedAttIndex == 0:
+					extractAllAtt(packet)
+			elif filteredProtocolIndex == 3:
+				if extractedAttIndex >= 17:	
+					tcp(packet, extractedAttIndex - 16, printKey)
+				elif extractedAttIndex >= 4:
+					ip(packet, extractedAttIndex - 3, printKey)
+
+					unpackedInfo.append('\n----------------------------------------')	
+				elif extractedAttIndex >= 1:	
+					eth(packet, extractedAttIndex, printKey)
+
+					unpackedInfo.append('\n----------------------------------------')	
+				elif extractedAttIndex == 0:
+					extractAllAtt(packet)
+			elif filteredProtocolIndex == 4:
+				if extractedAttIndex >= 17:	
+					udp(packet, extractedAttIndex - 16, printKey)
+				elif extractedAttIndex >= 4:
+					ip(packet, extractedAttIndex - 3, printKey)
+
+					unpackedInfo.append('\n----------------------------------------')	
+				elif extractedAttIndex >= 1:	
+					eth(packet, extractedAttIndex, printKey)
+
+					unpackedInfo.append('\n----------------------------------------')	
+				elif extractedAttIndex == 0:
+					extractAllAtt(packet)
+			return 0
+		else:
+			return 1	
 	elif os == windows:
-		ethProtocol = 8
-
-	# Find if the Ethernet frame is ARP or IP.
-	# If the protocol is 1544, meaning ARP, then unpack and save the ARP information.
-	# If the protocol is 8, meaning IP, find the diameter and find the protocol within IP.
-	if ethProtocol == 1544:
-		allList.append(packet)
-		arpList.append(packet)
-	elif ethProtocol == 8:
-		# Find the packet's IP protocol.
-		ipProtocol = int(ip(packet, 9, 1))
-		
-		# Append the IP total length to the length list.
-		# Append the diameters to the diameter list using TTL.
-		# These will be used for calculations and graphs.
-		ipTotalLength = int(ip(packet, 4, 1))
-		lengthList.append(ipTotalLength)
+		if (filteredProtocolIndex == protocolIndex) or (filteredProtocolIndex == 0):
+			# Attributes will be printed.
+			printKey = 0
 			
-		# Find the diameter of the network.
-		# Different servers have different operating systems that have different TTLs.
-		# Cisco is 255, Windows is 128, Linux is 64.
-		ipTimeToLive = int(ip(packet, 8, 1))
-		
-		if ipTimeToLive > 128:
-			diameterList.append(255 - ipTimeToLive)
-		elif ipTimeToLive > 64:
-			diameterList.append(128 - ipTimeToLive)
+			# Find the user selected filtered protocol index.
+			if filteredProtocolIndex == 0:
+				if extractedAttIndex >= 1:
+					ip(packet, extractedAttIndex, printKey)
+
+					# Separator
+					unpackedInfo.append('\n----------------------------------------')
+				elif extractedAttIndex == 0:
+					extractAllAtt(packet)
+			elif filteredProtocolIndex == 1:
+				# The user selected extracted attribute index will be calibrated (if needed) to specify which attribute to extract.
+				if extractedAttIndex >= 14:	
+					icmp(packet, extractedAttIndex - 13, printKey)
+				elif extractedAttIndex >= 1:
+					ip(packet, extractedAttIndex, printKey)
+						
+					# Separator	
+					unpackedInfo.append('\n----------------------------------------')	
+				elif extractedAttIndex == 0:
+					extractAllAtt(packet)
+			elif filteredProtocolIndex == 2:
+				if extractedAttIndex >= 14:	
+					tcp(packet, extractedAttIndex - 13, printKey)
+				elif extractedAttIndex >= 1:
+					ip(packet, extractedAttIndex, printKey)
+						
+					unpackedInfo.append('\n----------------------------------------')	
+				elif extractedAttIndex == 0:
+					extractAllAtt(packet)
+			elif filteredProtocolIndex == 3:
+				if extractedAttIndex >= 14:	
+					udp(packet, extractedAttIndex - 13, printKey)
+				elif extractedAttIndex >= 1:
+					ip(packet, extractedAttIndex, printKey)
+						
+					unpackedInfo.append('\n----------------------------------------')	
+				elif extractedAttIndex == 0:
+					extractAllAtt(packet)
+			return 0
 		else:
-			diameterList.append(64 - ipTimeToLive)
-		
-		# If the protocol is 1, meaning ICMP, then unpack and save the ICMP information.
-		# If the protocol is 6, meaning TCP, then unpack and save the TCP information.
-		# If the protocol is 17, meaning UDP, then unpack and save the UDP information.
-		if ipProtocol == 1:
-			allList.append(packet)
-			icmpList.append(packet)
-		elif ipProtocol == 6:
-			allList.append(packet)
-			tcpList.append(packet)
-		elif ipProtocol == 17:
-			allList.append(packet)
-			udpList.append(packet)
-
-def linuxFilter():
-	# Repeated if incorrect input.
-	while True:
-		# Display filtering options.
-		filteredProtocol = raw_input('0: ARP\n1: ICMP\n2: TCP\n3: UDP\nCtrl+c to stop...\nSelection: ')
-		
-		# Check if decision is supported input.
-		try:
-			filteredProtocol = int(filteredProtocol)
-		except ValueError:
-			print('\nUnsupported input, try again...')
-			continue
-		
-		# All attributes for each protocol will be displayed.
-		attKey = '*'
-		
-		# Attributes will be printed.
-		printKey = 0
-
-		# Filter based on input, if input is not supported, notify user.
-		# If no protocols of certain type were filtered, notify user.
-		# If user chooses cancel option, break while loop, thus stopping the filtering.
-		if filteredProtocol == 0:
-			# Find the length of the protocol's list.
-			length = len(arpList)
-			
-			# If the length is not empty, unpack and display the packets in the list.
-			# 	Then return the associated number of protocol being filtered.
-			# If length is empty, notify user.
-			if length > 0:
-				for i in range(length):
-					packet = arpList[i]
-					unpackAndDisplay(packet)
-				return filteredProtocol
-			else:
-				print('\nNo protocols of this type were sniffed.')
-		elif filteredProtocol == 1:
-			length = len(icmpList)
-			
-			if length > 0:
-				for i in range(length):
-					packet = icmpList[i]
-					unpackAndDisplay(packet)
-				return filteredProtocol
-			else:
-				print('\nNo protocols of this type were sniffed.')
-		elif filteredProtocol == 2:
-			length = len(tcpList)
-			
-			if length > 0:
-				for i in range(length):
-					packet = tcpList[i]
-					unpackAndDisplay(packet)
-				return filteredProtocol
-			else:
-				print('\nNo protocols of this type were sniffed.')
-		elif filteredProtocol == 3:
-			length = len(udpList)
-			
-			if length > 0:
-				for i in range(length):
-					packet = udpList[i]
-					unpackAndDisplay(packet)
-				return filteredProtocol
-			else:
-				print('\nNo protocols of this type were sniffed.')
-		else:
-			print('\nUnsupported input, try again...')
-			
-def windowsFilter():
-	while True:
-		# Display filtering options.
-		# Repeated if incorrect input.
-		filteredProtocol = raw_input('0: ICMP\n1: TCP\n2: UDP\nCtrl+c to stop...\nSelection: ')
-		
-		# Check if decision is supported input.
-		try:
-			filteredProtocol = int(filteredProtocol)
-		except ValueError:
-			print('\nUnsupported input, try again...')
-			continue
-		
-		# All attributes for each protocol will be displayed.
-		attKey = '*'
-		
-		# Attributes will be printed.
-		printKey = 0
-
-		# Filter based on input, if input is not supported, notify user.
-		# If no protocols of certain type were filtered, notify user.
-		# If user chooses cancel option, break while loop.
-		if filteredProtocol == 0:
-			# Find the length of the protocol's list.
-			length = len(icmpList)
-			
-			# If the length is not empty, unpack the packets in the list.
-			# If length is empty, notify user and return the associated number of protocol being filtered.
-			if length > 0:
-				for i in range(length):
-					packet = icmpList[i]
-					unpackAndDisplay(packet)
-				return filteredProtocol
-			else:
-				print('\nNo protocols of this type were sniffed.')
-		elif filteredProtocol == 1:
-			length = len(tcpList)
-			
-			if length > 0:
-				for i in range(length):
-					packet = tcpList[i]
-					unpackAndDisplay(packet)
-				return filteredProtocol
-			else:
-				print('\nNo protocols of this type were sniffed.')
-		elif filteredProtocol == 2:
-			length = len(udpList)
-			
-			if length > 0:
-				for i in range(length):
-					packet = udpList[i]
-					unpackAndDisplay(packet)
-				return filteredProtocol
-			else:
-				print('\nNo protocols of this type were sniffed.')
-		else:
-			print('\nUnsupported input, try again...')
-
-def linuxExtract(filteredProtocol):
-	# Establish the prompts for each protocol's attributes.
-	ethAttributes = '0: Destination Address\n1: Source Address\n2: EtherType'
-	arpAttributes = '3: Hardware Type\n4: Protocol Type\n5: Hardware Address Length\n6: Protocol Address Length\n7: Operation\n8: Sender Hardware Address\n9: Sender Protocol Address\n10: Target Hardware Address\n11: Target Protocol Address'
-	ipAttributes = 	'3: Version\n4: Header Length\n5: Differentiated Services Code Point\n6: Explicit Congestion Notification\n7: Total Length\n8: Identification\n9: Flags\n10: Fragment Offset\n11: Time to Live\n12: Protocol\n13: Header Checksum\n14: Source Address\n15: Destination Address'
-	icmpAttributes = '16: Type\n17: Code\n18: Checksum\n19: Identifier (If available)\n20: Sequence Number (If available)'
-	tcpAttributes = '16: Source Port\n17: Destination Port\n18: Sequence Number\n19: Acknowledgment Number\n20: Data Offset\n21: Reserved\n22: NS Flag\n23: CWR Flag\n24: ECE Flag\n25: URG Flag\n26: ACK Flag\n27: PSH Flag\n28: RST Flag\n29: SYN Flag\n30: FIN Flag\n31: Window Size\n32: Urgent Pointer\n33: Checksum'
-	udpAttributes = '16: Source Port\n17: Destination Port\n18: Length\n19: Checksum'
-	
-	# Attributes will be printed.
-	printKey = 0
-	
-	# Repeated if incorrect input.
-	while True:
-		# Find the filtered protocol specified by the user.
-		if filteredProtocol == 0:
-			# Display the approriate attributes available from the filtered protocol.
-			print(ethAttributes)
-			print(arpAttributes)
-			extractedAtt = raw_input('Selection: ')
-			
-			# Check if attKey (extractedAtt) is supported input.
-			try:
-				attKey = int(extractedAtt)
-			except ValueError:
-				print('\nUnsupported input, try again...')
-				continue
-			
-			# Check if attKey is within range.
-			if (attKey < 0) or (attKey > 11):
-				print('\nUnsupported input, try again...')
-				continue
-
-			# Find the length of the protocol's list.
-			length = len(arpList)
-			
-			# The extracted attribute will be found by going through the protocol layers.
-			# The attKey will be calibrated (if needed) to specify which attribute to print.
-			if attKey >= 3:
-				for i in range(length):
-					packet = arpList[i]
-					arp(packet, attKey - 3, printKey)
-				break
-			elif attKey >= 0:	
-				for i in range(length):
-					packet = arpList[i]
-					eth(packet, attKey, printKey)
-					
-					# Separator	
-					print('\n----------------------------------------')	
-				break	
-		elif filteredProtocol == 1:
-			print(ethAttributes)
-			print(ipAttributes)
-			print(icmpAttributes)
-			extractedAtt = raw_input('Selection: ')
-			
-			try:
-				attKey = int(extractedAtt)
-			except ValueError:
-				print('\nUnsupported input, try again...')
-				continue
-			
-			if (attKey < 0) or (attKey > 20):
-				print('\nUnsupported input, try again...')
-				continue
-			
-			length = len(icmpList)
-			
-			if attKey >= 16:	
-				for i in range(length):
-					packet = icmpList[i]
-					icmp(packet, attKey - 16, printKey)
-				break
-			elif attKey >= 3:
-				for i in range(length):
-					packet = icmpList[i]
-					ip(packet, attKey - 3, printKey)
-					
-					# Separator	
-					print('\n----------------------------------------')	
-				break
-			elif attKey >= 0:	
-				for i in range(length):
-					packet = icmpList[i]
-					eth(packet, attKey, printKey)
-					
-					# Separator	
-					print('\n----------------------------------------')	
-				break
-		elif filteredProtocol == 2:
-			print(ethAttributes)
-			print(ipAttributes)
-			print(tcpAttributes)
-			extractedAtt = raw_input('Selection: ')
-			
-			try:
-				attKey = int(extractedAtt)
-			except ValueError:
-				print('\nUnsupported input, try again...')
-				continue
-			
-			if (attKey < 0) or (attKey > 33):
-				print('\nUnsupported input, try again...')
-				continue
-			
-			length = len(tcpList)
-			
-			if attKey >= 16:	
-				for i in range(length):
-					packet = tcpList[i]
-					tcp(packet, attKey - 16, printKey)
-				break
-			elif attKey >= 3:
-				for i in range(length):
-					packet = tcpList[i]
-					ip(packet, attKey - 3, printKey)
-					
-					# Separator	
-					print('\n----------------------------------------')	
-				break
-			elif attKey >= 0:	
-				for i in range(length):
-					packet = tcpList[i]
-					eth(packet, attKey, printKey)
-					
-					# Separator	
-					print('\n----------------------------------------')	
-				break
-		elif filteredProtocol == 3:
-			print(ethAttributes)
-			print(ipAttributes)
-			print(udpAttributes)
-			extractedAtt = raw_input('Selection: ')
-			
-			try:
-				attKey = int(extractedAtt)
-			except ValueError:
-				print('\nUnsupported input, try again...')
-				continue
-			
-			if (attKey < 0) or (attKey > 19):
-				print('\nUnsupported input, try again...')
-				continue
-			
-			length = len(udpList)
-			
-			if attKey >= 16:	
-				for i in range(length):
-					packet = udpList[i]
-					udp(packet, attKey - 16, printKey)
-				break
-			elif attKey >= 3:
-				for i in range(length):
-					packet = udpList[i]
-					ip(packet, attKey - 3, printKey)
-					
-					# Separator	
-					print('\n----------------------------------------')	
-				break
-			elif attKey >= 0:	
-				for i in range(length):
-					packet = udpList[i]
-					eth(packet, attKey, printKey)
-					
-					# Separator	
-					print('\n----------------------------------------')	
-				break
+			return 1			
 				
-def windowsExtract(filteredProtocol):
-	# Establish the prompts for each protocol's attributes.
-	ipAttributes = 	'0: Version\n1: Header Length\n2: Differentiated Services Code Point\n3: Explicit Congestion Notification\n4: Total Length\n5: Identification\n6: Flags\n7: Fragment Offset\n8: Time to Live\n9: Protocol\n10: Header Checksum\n11: Source Address\n12: Destination Address'
-	icmpAttributes = '13: Type\n14: Code\n15: Checksum\n16: Identifier (If available)\n17: Sequence Number (If available)'
-	tcpAttributes = '13: Source Port\n14: Destination Port\n15: Sequence Number\n16: Acknowledgment Number\n17: Data Offset\n18: Reserved\n19: NS Flag\n20: CWR Flag\n21: ECE Flag\n22: URG Flag\n23: ACK Flag\n24: PSH Flag\n25: RST Flag\n26: SYN Flag\n27: FIN Flag\n28: Window Size\n29: Urgent Pointer\n30: Checksum'
-	udpAttributes = '13: Source Port\n14: Destination Port\n15: Length\n16: Checksum'
-	
-	# Attributes will be printed.
-	printKey = 0
-	
-	# Repeated if incorrect input.
-	while True:
-		# Find the filtered protocol specified by the user.
-		if filteredProtocol == 0:
-			# Display the approriate attributes available from the filtered protocol.
-			print(ipAttributes)
-			print(icmpAttributes)
-			extractedAtt = raw_input('Selection: ')
-			
-			# Check if attKey (extractedAtt) is supported input.
-			try:
-				attKey = int(extractedAtt)
-			except ValueError:
-				print('\nUnsupported input, try again...')
-				continue
-			
-			if (attKey < 0) or (attKey > 17):
-				print('\nUnsupported input, try again...')
-				continue
-				
-			# Find the length of the protocol's list.
-			length = len(icmpList)
-			
-			# The extracted attribute will be found by going through the protocol layers.
-			# The attKey will be calibrated (if needed) to specify which attribute to print.
-			if attKey >= 13:	
-				for i in range(length):
-					packet = icmpList[i]
-					icmp(packet, attKey - 13, printKey)
-				break
-			elif attKey >= 0:
-				for i in range(length):
-					packet = icmpList[i]
-					ip(packet, attKey, printKey)
-					
-					# Separator	
-					print('\n----------------------------------------')	
-				break
-		elif filteredProtocol == 1:
-			print(ipAttributes)
-			print(tcpAttributes)
-			extractedAtt = raw_input('Selection: ')
-			
-			try:
-				attKey = int(extractedAtt)
-			except ValueError:
-				print('\nUnsupported input, try again...')
-				continue
-			
-			if (attKey < 0) or (attKey > 30):
-				print('\nUnsupported input, try again...')
-				continue
-			
-			length = len(tcpList)
-			
-			if attKey >= 13:	
-				for i in range(length):
-					packet = tcpList[i]
-					tcp(packet, attKey - 13, printKey)
-				break
-			elif attKey >= 0:
-				for i in range(length):
-					packet = tcpList[i]
-					ip(packet, attKey, printKey)
-					
-					# Separator	
-					print('\n----------------------------------------')	
-				break
-		elif filteredProtocol == 2:
-			print(ipAttributes)
-			print(udpAttributes)
-			extractedAtt = raw_input('Selection: ')
-			
-			try:
-				attKey = int(extractedAtt)
-			except ValueError:
-				print('\nUnsupported input, try again...')
-				continue
-			
-			if (attKey < 0) or (attKey > 16):
-				print('\nUnsupported input, try again...')
-				continue
-			
-			length = len(udpList)
-			
-			if attKey >= 13:	
-				for i in range(length):
-					packet = udpList[i]
-					udp(packet, attKey - 13, printKey)
-				break
-			elif attKey >= 0:
-				for i in range(length):
-					packet = udpList[i]
-					ip(packet, attKey, printKey)
-					
-					# Separator	
-					print('\n----------------------------------------')	
-				break
-
 def findMaxDiameter():
 	# Find the maximum diameter of all the packets.
-    diameterMax = max(diameterList)
-    
-    # Print the maximum diameter.
-    print('Max Diameter: ' + str(diameterMax) + ' hops')
-    
+	maxDiameter = max(diameterList)
+	
+	# Print the maximum diameter.
+	calculationList.append('Max Diameter: ' + str(maxDiameter) + ' hops')
+	
 def findMaxPacketLength():
 	# Find the maximum packet length of all the packets.
-	lengthMax = max(lengthList)
+	maxLength = max(lengthList)
 
 	# Print the maximum packet length.
-	print('Max Packet Length: ' + str(lengthMax) + ' bytes')
+	calculationList.append('Max Packet Length: ' + str(maxLength) + ' bytes')
 
-def findAverageDiameter():
+def findAvgDiameter():
 	# Hold the sum and the count of the diameters.
-    diameterSum = 0
-    count = 0
-    
-    # Add all of the diameters together.
-    for diameter in diameterList:
-        diameterSum = diameterSum + diameter
-        count = count + 1
-        
-    # Divide diameterSum by count to give average.
-    diameterAverage = diameterSum / count
-    print('Average Diameter: ' + str(diameterAverage) + ' hops')
+	diameterSum = 0
+	count = 0
+	avgDiameter = 0
+	
+	# Add all of the diameters together.
+	for diameter in diameterList:
+		diameterSum = diameterSum + diameter
+		count = count + 1
+		
+	# Divide diameterSum by count to give average.
+	avgDiameter = diameterSum / count
+	calculationList.append('Avg Diameter: ' + str(avgDiameter) + ' hops')
 
-def findAveragePacketLength():
+def findAvgPacketLength():
 	# Hold the sum and the count of the packet lengths.
-    lengthSum = 0
-    count = 0
-    
-    # Add all of the lengths together.
-    for length in lengthList:
-        lengthSum = lengthSum + length
-        count = count + 1
-        
-    # Divide lengthSum by count to give average.
-    lengthAverage = lengthSum / count
-    print('Average Packet Length: ' + str(lengthAverage) + ' bytes')
+	lengthSum = 0
+	count = 0
+	avgLength = 0
+	
+	# Add all of the lengths together.
+	for length in lengthList:
+		lengthSum = lengthSum + length
+		count = count + 1
+
+	# Divide lengthSum by count to give average.
+	avgLength = lengthSum / count
+	calculationList.append('Avg Packet Length: ' + str(avgLength) + ' bytes')
 
 def startSniff():
 	try:
 		while True:
-			# Ask the user if they would like to begin the sniffer or not.
-			decision = raw_input('Would you like to sniff the network? Y/N: ')
+			# Ask the user if they would like to begin sniffing.
+			decision = raw_input('Sniff the network? Y/N: ')
 			
 			# Y runs the rest of the application.
 			# N exits the application.
 			if (decision == 'Y') or (decision == 'y'):
-				print('Sniffing, press Ctrl+c to stop...')
 				break
 			elif (decision == 'N') or (decision == 'n'):
 				close()
@@ -1192,8 +921,8 @@ def startSniff():
 def startFilter():
 	try:
 		while True:
-			# Ask the user if they would like to filter the packets or not.
-			decision = raw_input('Would you like to filter the sniffed packets by protocol? Y/N: ')
+			# Ask the user if they would like to filter the packets.
+			decision = raw_input('Filter the packets by a specific protocol? Y/N: ')
 
 			# Y runs the rest of the application.
 			# N exits the application.
@@ -1211,12 +940,12 @@ def startFilter():
 def startExtract():
 	try:
 		while True:
-			# Ask the user if they would like to extract attributes or not.
-			decision = raw_input('Would you like to extract a specific attribute? Y/N: ')
+			# Ask the user if they would like to extract attributes.
+			decision = raw_input('Extract a specific attribute from the protocol? Y/N: ')
 			
 			# Y runs the rest of the application.
 			# N exits the application.
-			if (decision == 'y') or (decision == 'Y'):
+			if (decision == 'Y') or (decision == 'y'):
 				print('Select an attribute...')
 				return 0
 			elif (decision == 'N') or (decision == 'n'):
@@ -1230,12 +959,12 @@ def startExtract():
 def startCalculations():
 	try:
 		while True:
-			# Ask the user if they would like to start calculations or not.
+			# Ask the user if they would like to start calculations.
 			decision = raw_input('Would you like to do some calculations? Y/N: ')
 			
 			# Y runs the rest of the application.
 			# N exits the application.
-			if (decision == 'y') or (decision == 'Y'):
+			if (decision == 'Y') or (decision == 'y'):
 				return 0
 			elif (decision == 'N') or (decision == 'n'):
 				return 1
@@ -1244,6 +973,288 @@ def startCalculations():
 	except KeyboardInterrupt:
 		print('')
 		return 1	
+
+def filterOptions():
+	if os == linux:
+		# Loop if unsupported input.
+		while True:
+			# Display protocols and their index.
+			filteredProtocolIndex = raw_input('0: All\n1: ARP\n2: ICMP\n3: TCP\n4: UDP\nSelection: ')
+			
+			# Check if the user selected filtered protocol index is supported input.
+			try:
+				filteredProtocolIndex = int(filteredProtocolIndex)
+			except ValueError:
+				print('\nUnsupported input, try again...')
+				continue
+			
+			# Check if the user selected filtered protocol index is in the index range.
+			# If true, return filteredProtocolIndex.
+			if (filteredProtocolIndex >= 0) and (filteredProtocolIndex <= 4):
+				return filteredProtocolIndex
+			else:
+				print('\nUnsupported input, try again...')
+				continue
+	elif os == windows:
+		# Loop if unsupported input.
+		while True:
+			# Display protocols and their index.
+			filteredProtocolIndex = raw_input('0: All\n1: ICMP\n2: TCP\n3: UDP\nSelection: ')
+			
+			# Check if the user selected filtered protocol index is supported input.
+			try:
+				filteredProtocolIndex = int(filteredProtocolIndex)
+			except ValueError:
+				print('\nUnsupported input, try again...')
+				continue
+			
+			# Check if the user selected filtered protocol index is in the index range.
+			# If true, return filteredProtocolIndex.
+			if (filteredProtocolIndex >= 0) and (filteredProtocolIndex <= 3):
+				return filteredProtocolIndex
+			else:
+				print('\nUnsupported input, try again...')
+				continue
+				
+def extractOptions(filteredProtocolIndex):
+	if os == linux:
+		# Establish the prompts for each protocol's attributes.
+		allAttributes = '0: All'
+		ethAttributes = '1: Destination Address\n2: Source Address\n3: EtherType'
+		arpAttributes = '4: Hardware Type\n5: Protocol Type\n6: Hardware Address Length\n7: Protocol Address Length\n8: Operation\n9: Sender Hardware Address\n10: Sender Protocol Address\n11: Target Hardware Address\n12: Target Protocol Address'
+		ipAttributes = 	'4: Version\n5: Header Length\n6: Differentiated Services Code Point\n7: Explicit Congestion Notification\n8: Total Length\n9: Identification\n10: Flags\n11: Fragment Offset\n12: Time to Live\n13: Protocol\n14: Header Checksum\n15: Source Address\n16: Destination Address'
+		icmpAttributes = '17: Type\n18: Code\n19: Checksum\n20: Identifier (If available)\n21: Sequence Number (If available)'
+		tcpAttributes = '17: Source Port\n18: Destination Port\n19: Sequence Number\n20: Acknowledgment Number\n21: Data Offset\n22: Reserved\n23: NS Flag\n24: CWR Flag\n25: ECE Flag\n26: URG Flag\n27: ACK Flag\n28: PSH Flag\n29: RST Flag\n30: SYN Flag\n31: FIN Flag\n32: Window Size\n33: Urgent Pointer\n34: Checksum'
+		udpAttributes = '17: Source Port\n18: Destination Port\n19: Length\n20: Checksum'
+		
+		# Loop if unsupported input.
+		while True:
+			# Find the user selected filtered protocol index.
+			# Return the user selected extracted attribute index.
+			if filteredProtocolIndex == 0:
+				# Display the appropriate attributes and their index available to the filtered protocol.
+				print(allAttributes)
+				print(ethAttributes)
+				extractedAttIndex = raw_input('Selection: ')
+				
+				# Check if the user selected extracted attribute index is supported input.
+				try:
+					extractedAttIndex = int(extractedAttIndex)
+				except ValueError:
+					print('\nUnsupported input, try again...')
+					continue
+				
+				# Check if the user selected extracted attribute index is in the index range.
+				# If true, return extractedAttIndex
+				if (extractedAttIndex >= 0) or (extractedAttIndex <= 3):
+					return extractedAttIndex
+				else:
+					print('\nUnsupported input, try again...')
+					continue
+			elif filteredProtocolIndex == 1:
+				# Display the appropriate attributes and their index available to the filtered protocol.
+				print(allAttributes)
+				print(ethAttributes)
+				print(arpAttributes)
+				extractedAttIndex = raw_input('Selection: ')
+				
+				# Check if the user selected extracted attribute index is supported input.
+				try:
+					extractedAttIndex = int(extractedAttIndex)
+				except ValueError:
+					print('\nUnsupported input, try again...')
+					continue
+				
+				# Check if the user selected extracted attribute index is in the index range.
+				# If true, return extractedAttIndex
+				if (extractedAttIndex >= 0) or (extractedAttIndex <= 12):
+					return extractedAttIndex
+				else:
+					print('\nUnsupported input, try again...')
+					continue
+			elif filteredProtocolIndex == 2:
+				print(allAttributes)
+				print(ethAttributes)
+				print(ipAttributes)
+				print(icmpAttributes)
+				extractedAttIndex = raw_input('Selection: ')
+				
+				try:
+					extractedAttIndex = int(extractedAttIndex)
+				except ValueError:
+					print('\nUnsupported input, try again...')
+					continue
+				
+				if (extractedAttIndex >= 0) or (extractedAttIndex <= 21):
+					return extractedAttIndex
+				else:
+					print('\nUnsupported input, try again...')
+					continue
+			elif filteredProtocolIndex == 3:
+				print(allAttributes)
+				print(ethAttributes)
+				print(ipAttributes)
+				print(tcpAttributes)
+				extractedAttIndex = raw_input('Selection: ')
+				
+				try:
+					extractedAttIndex = int(extractedAttIndex)
+				except ValueError:
+					print('\nUnsupported input, try again...')
+					continue
+				
+				if (extractedAttIndex >= 0) or (extractedAttIndex <= 34):
+					return extractedAttIndex
+				else:
+					print('\nUnsupported input, try again...')
+					continue
+			elif filteredProtocolIndex == 4:
+				print(allAttributes)
+				print(ethAttributes)
+				print(ipAttributes)
+				print(udpAttributes)
+				extractedAttIndex = raw_input('Selection: ')
+				
+				try:
+					extractedAttIndex = int(extractedAttIndex)
+				except ValueError:
+					print('\nUnsupported input, try again...')
+					continue
+				
+				if (extractedAttIndex >= 0) or (extractedAttIndex <= 20):
+					return extractedAttIndex
+				else:
+					print('\nUnsupported input, try again...')
+					continue
+	elif os == windows:
+		# Establish the prompts for each protocol's attributes.
+		allAttributes = '0: All'
+		ipAttributes = 	'1: Version\n2: Header Length\n3: Differentiated Services Code Point\n4: Explicit Congestion Notification\n5: Total Length\n6: Identification\n7: Flags\n8: Fragment Offset\n9: Time to Live\n10: Protocol\n11: Header Checksum\n12: Source Address\n13: Destination Address'
+		icmpAttributes = '14: Type\n15: Code\n16: Checksum\n17: Identifier (If available)\n18: Sequence Number (If available)'
+		tcpAttributes = '14: Source Port\n15: Destination Port\n16: Sequence Number\n17: Acknowledgment Number\n18: Data Offset\n19: Reserved\n20: NS Flag\n21: CWR Flag\n22: ECE Flag\n23: URG Flag\n24: ACK Flag\n25: PSH Flag\n26: RST Flag\n27: SYN Flag\n28: FIN Flag\n29: Window Size\n30: Urgent Pointer\n31: Checksum'
+		udpAttributes = '14: Source Port\n15: Destination Port\n16: Length\n17: Checksum'
+		
+		# Loop if unsupported input.
+		while True:
+			# Find the user selected filtered protocol index.
+			# Return the user selected extracted attribute index.
+			if filteredProtocolIndex == 0:
+				# Display the appropriate attributes and their index available to the filtered protocol.
+				print(allAttributes)
+				print(ipAttributes)
+				extractedAttIndex = raw_input('Selection: ')
+				
+				# Check if the user selected extracted attribute index is supported input.
+				try:
+					extractedAttIndex = int(extractedAttIndex)
+				except ValueError:
+					print('\nUnsupported input, try again...')
+					continue
+				
+				# Check if the user selected extracted attribute index is in the index range.
+				# If true, return extractedAttIndex
+				if (extractedAttIndex >= 0) or (extractedAttIndex <= 3):
+					return extractedAttIndex
+				else:
+					print('\nUnsupported input, try again...')
+					continue
+			elif filteredProtocolIndex == 1:
+				# Display the appropriate attributes and their index available to the filtered protocol.
+				print(ipAttributes)
+				print(icmpAttributes)
+				extractedAttIndex = raw_input('Selection: ')
+				
+				# Check if the user selected extracted attribute index is in the index range.
+				# If true, return extractedAttIndex
+				try:
+					extractedAttIndex = int(extractedAttIndex)
+				except ValueError:
+					print('\nUnsupported input, try again...')
+					continue
+
+				if (extractedAttIndex >= 0) or (extractedAttIndex <= 18):
+					return extractedAttIndex
+				else:
+					print('\nUnsupported input, try again...')
+					continue
+			elif filteredProtocolIndex == 2:
+				print(ipAttributes)
+				print(tcpAttributes)
+				extractedAttIndex = raw_input('Selection: ')
+				
+				try:
+					extractedAttIndex = int(extractedAttIndex)
+				except ValueError:
+					print('\nUnsupported input, try again...')
+					continue
+				
+				if (extractedAttIndex >= 0) or (extractedAttIndex <= 21):
+					return extractedAttIndex
+				else:
+					print('\nUnsupported input, try again...')
+					continue
+			elif filteredProtocolIndex == 3:
+				print(ipAttributes)
+				print(udpAttributes)
+				extractedAttIndex = raw_input('Selection: ')
+				
+				try:
+					extractedAttIndex = int(extractedAttIndex)
+				except ValueError:
+					print('\nUnsupported input, try again...')
+					continue
+				
+				if (extractedAttIndex >= 0) or (extractedAttIndex <= 17):
+					return extractedAttIndex
+				else:
+					print('\nUnsupported input, try again...')
+					continue
+
+def prepareCalculationData(packet):
+	# If the OS is Linux, unpack Ethernet's protocol.
+	# If the OS is Windows, mimic unpacking Ethernet's protocol.
+	if os == linux:
+		# Find the packet's Ethernet protocol.
+		ethProtocol = eth(packet, 3, 1)
+		ethProtocol = int(ethProtocol)
+	elif os == windows:
+		ethProtocol = 8
+
+	# Find if the Ethernet protocol is IP.
+	# If the protocol is 8, meaning IP, find the diameter and find the protocol within IP.
+	if ethProtocol == 8:
+		# Append the IP total length to the length list.
+		# Append the diameters to the diameter list using TTL.
+		# These will be used for calculations.
+		ipTotalLength = ip(packet, 5, 1)
+		ipTotalLength = int(ipTotalLength)
+		lengthList.append(ipTotalLength)
+			
+		# Find the diameter of the network.
+		# Different servers have different operating systems that have different TTLs.
+		# Cisco is 255, Windows is 128, Linux is 64.
+		ipTimeToLive = ip(packet, 9, 1)
+		ipTimeToLive = int(ipTimeToLive)
+		
+		if ipTimeToLive > 128:
+			diameterList.append(255 - ipTimeToLive)
+		elif ipTimeToLive > 64:
+			diameterList.append(128 - ipTimeToLive)
+		else:
+			diameterList.append(64 - ipTimeToLive)
+			
+		return 0
+	else:
+		return 1
+
+def calculateData():
+	try:		
+		findMaxDiameter()
+		findMaxPacketLength()
+		findAvgDiameter()
+		findAvgPacketLength()
+	except KeyboardInterrupt:
+		print('\nCalculations stopped.')
 
 def close():
 	try:
@@ -1255,29 +1266,59 @@ def close():
 		sys.exit()
 
 def sniff():
-	# Ask the user to begin.
-	startSniff()
-		
 	try:
+		# Ask user to filter by protocol.
+		# If true, set filteredProtcolIndex to selected protocol.
+		# If false, set filteredProtocolIndex to 0 (All).
+		if startFilter() == 0:
+			filteredProtocolIndex = filterOptions()
+		else:
+			filteredProtocolIndex = 0
+
+		# Ask user to extract an attribute.
+		# If true, set extractedAttIndex to selected attribute.
+		# If false, set extractedAttIndex to 0 (All).
+		if startExtract() == 0:
+			extractedAttIndex = extractOptions(filteredProtocolIndex)
+		else:
+			extractedAttIndex = 0
+
+		# Notify the user the application is sniffing.
+		print('Sniffing... Ctrl+c to stop...')
+
 		# If Linux, set up the raw socket the Linux way.
 		# If Windows, set up the raw socket the Windows way.
-		# If not Linux or Windows, close the application.
 		if os == linux:
 			# Create the raw socket.
 			sock = socket.socket(socket.AF_PACKET , socket.SOCK_RAW , socket.ntohs(0x0003))
-			
+
 			# Sniff packets. Will loop until user presses Ctrl+c.
-			while True:	
+			while True:
 				# Recieve the packets in the network.
 				# Packet will be a tuple, use the first element in the tuple.
 				packet = sock.recvfrom(65565)
-				packet = packet[0]				
+				packet = packet[0]		
 				
-				unpackAndDisplay(packet)
-				unpackAndSave(packet)
+				# Delete the data inside the lists containing unpacked info and calculations.
+				# This is needed as these lists can contain data about a current packet being sniffed.
+				del unpackedInfo[:]
+				del calculationList[:]		
+
+				# Filter and extract packet info using packet, filteredProtocolIndex and extractedAttIndex.
+				# Save the packet for other operations.
+				filterAndExtractVar = filterAndExtract(packet, filteredProtocolIndex, extractedAttIndex)
 				
-			# Close the socket.
-			sock.close()
+				# Check if the user selected filtered protocol index is supported.
+				# If true, print the unpacked info.
+				if filterAndExtractVar == 0:
+					for i in range(len(unpackedInfo)):
+						print(unpackedInfo[i])
+					
+					prepareCalculationDataVar = prepareCalculationData(packet)
+					
+					if prepareCalculationDataVar == 0:
+						calculateData()
+
 		elif os == windows:
 			# The public network interface.
 			HOST = socket.gethostbyname(socket.gethostname())
@@ -1297,68 +1338,56 @@ def sniff():
 				# Recieve the packets in the network.
 				# Packet will be a tuple, use the first element in the tuple.
 				packet = sock.recvfrom(65565)
-				packet = packet[0]
-					
-				unpackAndDisplay(packet)
-				unpackAndSave(packet)	
+				packet = packet[0]		
 				
-			# Disable promiscuous mode.	
-			sock.ioctl(socket.SIO_RCVALL, socket.RCVALL_OFF)
-			
-			# Close the socket.
-			sock.close()
-		else:
-			print('The OS you are running is not supported.')
-			close()   				
+				# Delete the data inside the lists containing unpacked info and calculations.
+				# This is needed as these lists can contain data about a current packet being sniffed.
+				del unpackedInfo[:]
+				del calculationList[:]		
+
+				# Filter and extract packet info using packet, filteredProtocolIndex and extractedAttIndex.
+				# Save the packet for other operations.
+				filterAndExtractVar = filterAndExtract(packet, filteredProtocolIndex, extractedAttIndex)
+				
+				# Check if the user selected filtered protocol index is supported.
+				# If true, print the unpacked info.
+				if filterAndExtractVar == 0:
+					for i in range(len(unpackedInfo)):
+						print(unpackedInfo[i])
+					
+					prepareCalculationDataVar = prepareCalculationData(packet)
+					
+					if prepareCalculationDataVar == 0:
+						calculateData()
 	except socket.error, msg:
 		print('Socket could not be created. \nError code: ' + str(msg[0]) + '\nMessage: ' + msg[1])
 		close()
 	except KeyboardInterrupt:
 		print('\nSniffing stopped.')
+		
+		# Disable promiscuous mode under Windows.
+		if os == windows:
+			sock.ioctl(socket.SIO_RCVALL, socket.RCVALL_OFF)
+  
+		# Close the socket.
+		sock.close()
 
-def filterAndExtract():
-	# Ask the user to filter by protocol.
-	# If 0, filter.
-	# If not 0, move on.
-	if startFilter() == 0:
-		try:
-			# If Linux, filter Linux's supported protocols, then extract.
-			# If Windows, filter Window's supported protocols, then extract.
-			if os == linux:
-				# Ask the user to extract an attribute.
-				# If 0, extract.
-				# If not 0, move on.
-				protocol = linuxFilter()
-				if 	startExtract() == 0:
-					linuxExtract(protocol)
-			elif os == windows:
-				# Ask the user to extract an attribute.
-				# If 0, extract.
-				# If not 0, move on.
-				protocol = windowsFilter()
-				if 	startExtract() == 0:
-					windowsExtract(protocol)
-		except KeyboardInterrupt:
-			print('\nFiltering and extracting stopped.')
+		if startCalculations() == 0:
+			for i in range(len(calculationList)):
+				print(calculationList[i])
 
-def calculate():
-	# Ask the user to do some calculations.
-	# If 0, calculate.
-	# If not 0, move on.
-	if startCalculations() == 0:
-		try:
-			findMaxDiameter()
-			findMaxPacketLength()
-			findAverageDiameter()
-			findAveragePacketLength()
-		except KeyboardInterrupt:
-			print('\nCalculations stopped.')
-	
-def main():	
-	while True:
-		sniff()
-		filterAndExtract()
-		calculate()
+def main():
+	if (os == linux) or (os == windows):
+		while True:
+			# Ask the user to begin sniffing.
+			startSniff()
+			
+			# Begin sniffing.
+			sniff()
+	else:
+		print('The OS you are running is not supported.')
+		
 	close()
 
-main()
+if __name__ == '__main__':
+    main()
